@@ -1,0 +1,334 @@
+package quizapp.network;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.function.Consumer;
+import quizapp.model.Player;
+import quizapp.model.Question;
+import quizapp.model.Quiz;
+
+public class GameServer {
+
+    private static final int PORT = 8888;
+    private static final long KEEP_ALIVE_INTERVAL = 3000; // 3 seconds
+    private static final long CLIENT_TIMEOUT = 10000; // 10 seconds
+
+    private ServerSocket serverSocket;
+    private final Quiz quiz;
+    private final String roomCode;
+    private final Map<String, ClientHandler> clients;
+    private final List<Player> players;
+    private boolean isRunning;
+    private Consumer<List<Player>> playerUpdateCallback;
+    private Timer keepAliveTimer;
+    private int currentQuestionIndex = -1;
+
+    public class ClientHandler implements Runnable {
+        private final Socket socket;
+        private final ObjectOutputStream out;
+        private final ObjectInputStream in;
+        private final Player player;
+        private final GameServer server;
+        private volatile boolean running = true;
+        private volatile long lastKeepAliveResponse;
+
+        public ClientHandler(Socket socket, ObjectOutputStream out, ObjectInputStream in,
+                             Player player, GameServer server) {
+            this.socket = socket;
+            this.out = out;
+            this.in = in;
+            this.player = player;
+            this.server = server;
+            this.lastKeepAliveResponse = System.currentTimeMillis();
+        }
+
+        @Override
+        public void run() {
+            try {
+                while (running && !socket.isClosed()) {
+                    Message message = (Message) in.readObject();
+                    lastKeepAliveResponse = System.currentTimeMillis();
+
+                    switch (message.getType()) {
+                        case ANSWER:
+                            handleAnswer(player, message.getAnswerIndex());
+                            break;
+
+                        case LEAVE:
+                            running = false;
+                            break;
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("Client disconnected: " + player.getName());
+            } finally {
+                close();
+                server.removeClient(player.getName());
+            }
+        }
+
+        public void sendMessage(Message message) throws IOException {
+            synchronized (out) {
+                out.writeObject(message);
+                out.reset();
+                out.flush();
+            }
+        }
+
+        public void sendKeepAlive() throws IOException {
+            Message keepAlive = new Message(MessageType.TIMER);
+            keepAlive.setTimeRemaining(-1);
+            sendMessage(keepAlive);
+
+            if (System.currentTimeMillis() - lastKeepAliveResponse > CLIENT_TIMEOUT) {
+                throw new IOException("Client timeout");
+            }
+        }
+
+        public void close() {
+            running = false;
+            try {
+                if (!socket.isClosed()) {
+                    socket.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public GameServer(Quiz quiz, String roomCode) {
+        this.quiz = quiz;
+        this.roomCode = roomCode;
+        this.clients = Collections.synchronizedMap(new HashMap<>());
+        this.players = Collections.synchronizedList(new ArrayList<>());
+        this.isRunning = false;
+    }
+
+    public void start() throws IOException {
+        serverSocket = new ServerSocket(PORT);
+        isRunning = true;
+
+        String hostAddress = InetAddress.getLocalHost().getHostAddress();
+        System.out.println("Game server started on IP: " + hostAddress);
+        System.out.println("Room code: " + roomCode);
+
+        startKeepAliveTimer();
+
+        new Thread(() -> {
+            try {
+                while (isRunning) {
+                    Socket clientSocket = serverSocket.accept();
+                    clientSocket.setKeepAlive(true);
+                    clientSocket.setTcpNoDelay(true);
+                    handleNewClient(clientSocket);
+                }
+            } catch (IOException e) {
+                if (isRunning) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+    private void startKeepAliveTimer() {
+        keepAliveTimer = new Timer(true);
+        keepAliveTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                synchronized (clients) {
+                    List<String> disconnectedClients = new ArrayList<>();
+                    for (Map.Entry<String, ClientHandler> entry : clients.entrySet()) {
+                        try {
+                            entry.getValue().sendKeepAlive();
+                        } catch (IOException e) {
+                            disconnectedClients.add(entry.getKey());
+                        }
+                    }
+                    for (String clientName : disconnectedClients) {
+                        removeClient(clientName);
+                    }
+                }
+            }
+        }, KEEP_ALIVE_INTERVAL, KEEP_ALIVE_INTERVAL);
+    }
+
+    private void handleNewClient(Socket clientSocket) {
+        try {
+            ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
+            ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
+
+            Message joinMessage = (Message) in.readObject();
+
+            if (joinMessage.getType() == MessageType.JOIN &&
+                    joinMessage.getRoomCode().equals(roomCode)) {
+
+                String playerName = joinMessage.getPlayerName();
+                Player player = new Player(playerName);
+
+                ClientHandler handler = new ClientHandler(clientSocket, out, in, player, this);
+                synchronized (clients) {
+                    clients.put(playerName, handler);
+                }
+
+                synchronized (players) {
+                    players.add(player);
+                }
+
+                Thread handlerThread = new Thread(handler);
+                handlerThread.setDaemon(true);
+                handlerThread.start();
+
+                Message response = new Message(MessageType.JOIN_SUCCESS);
+                out.writeObject(response);
+                out.flush();
+
+                if (playerUpdateCallback != null) {
+                    playerUpdateCallback.accept(getConnectedPlayers());
+                }
+
+            } else {
+                Message response = new Message(MessageType.JOIN_FAILED, "Invalid room code");
+                out.writeObject(response);
+                out.flush();
+                clientSocket.close();
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            try {
+                clientSocket.close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+
+    public void removeClient(String playerName) {
+        synchronized (clients) {
+            ClientHandler handler = clients.remove(playerName);
+            if (handler != null) {
+                handler.close();
+            }
+        }
+
+        synchronized (players) {
+            players.removeIf(p -> p.getName().equals(playerName));
+        }
+
+        if (playerUpdateCallback != null) {
+            playerUpdateCallback.accept(getConnectedPlayers());
+        }
+    }
+
+    public void stop() {
+        isRunning = false;
+        if (keepAliveTimer != null) {
+            keepAliveTimer.cancel();
+        }
+
+        synchronized (clients) {
+            for (ClientHandler handler : clients.values()) {
+                handler.close();
+            }
+            clients.clear();
+        }
+
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void broadcastQuestion(Question question, int questionNumber) {
+        Message message = new Message(MessageType.QUESTION);
+        message.setQuestion(question);
+        message.setQuestionNumber(questionNumber + 1);
+        message.setTotalQuestions(quiz.getQuestionCount());
+
+        synchronized (clients) {
+            for (ClientHandler handler : clients.values()) {
+                try {
+                    handler.sendMessage(message);
+                } catch (IOException e) {
+                    // Client will be removed when its handler detects the error
+                }
+            }
+        }
+    }
+
+    public void broadcastTimeUp() {
+        Message message = new Message(MessageType.TIME_UP);
+
+        synchronized (clients) {
+            for (ClientHandler handler : clients.values()) {
+                try {
+                    handler.sendMessage(message);
+                } catch (IOException e) {
+                    // Client will be removed when its handler detects the error
+                }
+            }
+        }
+    }
+
+    public void broadcastResults(List<Player> results) {
+        Message message = new Message(MessageType.RESULTS);
+        message.setPlayerResults(results);
+
+        synchronized (clients) {
+            for (ClientHandler handler : clients.values()) {
+                try {
+                    handler.sendMessage(message);
+                } catch (IOException e) {
+                    // Client will be removed when its handler detects the error
+                }
+            }
+        }
+    }
+
+    public void handleAnswer(Player player, int answerIndex) {
+        Question currentQuestion = quiz.getQuestionAt(currentQuestionIndex);
+        if (currentQuestion != null && currentQuestion.isCorrectAnswer(answerIndex)) {
+            player.incrementCorrectAnswers();
+
+            ClientHandler handler = clients.get(player.getName());
+            if (handler != null) {
+                Message scoreUpdate = new Message(MessageType.SCORE_UPDATE);
+                scoreUpdate.setScore(player.getCorrectAnswers());
+                try {
+                    handler.sendMessage(scoreUpdate);
+                } catch (IOException e) {
+                    // Client will be removed when its handler detects the error
+                }
+            }
+        }
+    }
+
+    public List<Player> getConnectedPlayers() {
+        synchronized (players) {
+            return new ArrayList<>(players);
+        }
+    }
+
+    public void setPlayerUpdateCallback(Consumer<List<Player>> callback) {
+        this.playerUpdateCallback = callback;
+    }
+
+    public String getRoomCode() {
+        return roomCode;
+    }
+}
