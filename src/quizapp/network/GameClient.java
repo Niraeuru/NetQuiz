@@ -14,6 +14,8 @@ public class GameClient {
     private static final int PORT = 8888;
     private static final int RECONNECT_ATTEMPTS = 3;
     private static final int RECONNECT_DELAY = 2000; // 2 seconds
+    private static final long KEEP_ALIVE_TIMEOUT = 15000; // 15 seconds
+    private static final long KEEP_ALIVE_INTERVAL = 3000; // 3 seconds
 
     private Socket socket;
     private ObjectOutputStream out;
@@ -22,8 +24,8 @@ public class GameClient {
     private final String roomCode;
     private boolean connected;
     private ClientListener listener;
+    private KeepAliveSender keepAliveSender;
     private long lastKeepAliveReceived;
-    private static final long KEEP_ALIVE_TIMEOUT = 5000; // 5 seconds
 
     @FunctionalInterface
     public interface QuestionCallback {
@@ -33,7 +35,6 @@ public class GameClient {
     private QuestionCallback questionCallback;
     private Consumer<Integer> timerCallback;
     private Runnable timeUpCallback;
-    private Consumer<Integer> scoreUpdateCallback;
     private Consumer<List<Player>> resultsCallback;
     private Runnable disconnectCallback;
 
@@ -47,24 +48,28 @@ public class GameClient {
         for (int attempt = 0; attempt < RECONNECT_ATTEMPTS; attempt++) {
             try {
                 socket = new Socket(hostIP, PORT);
+                socket.setKeepAlive(true);
+                socket.setTcpNoDelay(true);
+                socket.setSoTimeout(15000); // 15 second read timeout
                 out = new ObjectOutputStream(socket.getOutputStream());
                 in = new ObjectInputStream(socket.getInputStream());
 
-                // Send join message
                 Message joinMessage = new Message(MessageType.JOIN);
                 joinMessage.setPlayerName(playerName);
                 joinMessage.setRoomCode(roomCode);
                 out.writeObject(joinMessage);
+                out.flush();
 
-                // Get response
                 Message response = (Message) in.readObject();
 
                 if (response.getType() == MessageType.JOIN_SUCCESS) {
                     connected = true;
+                    lastKeepAliveReceived = System.currentTimeMillis();
 
-                    // Start listener thread
                     listener = new ClientListener();
+                    keepAliveSender = new KeepAliveSender();
                     new Thread(listener).start();
+                    new Thread(keepAliveSender).start();
 
                     return true;
                 } else {
@@ -85,6 +90,42 @@ public class GameClient {
         return false;
     }
 
+    private class KeepAliveSender implements Runnable {
+        private volatile boolean running = true;
+
+        @Override
+        public void run() {
+            while (running && connected) {
+                try {
+                    Thread.sleep(KEEP_ALIVE_INTERVAL);
+                    if (connected) {
+                        sendKeepAlive();
+                    }
+                } catch (InterruptedException e) {
+                    break;
+                } catch (IOException e) {
+                    System.out.println("Error sending keep-alive: " + e.getMessage());
+                    handleDisconnect();
+                    break;
+                }
+            }
+        }
+
+        public void stop() {
+            running = false;
+        }
+    }
+
+    private void sendKeepAlive() throws IOException {
+        if (!connected) return;
+        
+        Message keepAlive = new Message(MessageType.KEEP_ALIVE);
+        synchronized (out) {
+            out.writeObject(keepAlive);
+            out.flush();
+        }
+    }
+
     private class ClientListener implements Runnable {
         private volatile boolean running = true;
 
@@ -92,58 +133,63 @@ public class GameClient {
         public void run() {
             try {
                 while (running && socket != null && !socket.isClosed()) {
-                    Message message = (Message) in.readObject();
+                    try {
+                        Message message = (Message) in.readObject();
+                        lastKeepAliveReceived = System.currentTimeMillis();
 
-                    // Update keep-alive timestamp
-                    lastKeepAliveReceived = System.currentTimeMillis();
+                        switch (message.getType()) {
+                            case QUESTION:
+                                if (questionCallback != null) {
+                                    questionCallback.accept(
+                                            message.getQuestion(),
+                                            message.getQuestionNumber(),
+                                            message.getTotalQuestions()
+                                    );
+                                }
+                                break;
 
-                    switch (message.getType()) {
-                        case QUESTION:
-                            if (questionCallback != null) {
-                                questionCallback.accept(
-                                        message.getQuestion(),
-                                        message.getQuestionNumber(),
-                                        message.getTotalQuestions()
-                                );
-                            }
-                            break;
+                            case TIMER:
+                                if (timerCallback != null) {
+                                    timerCallback.accept(message.getTimeRemaining());
+                                }
+                                break;
 
-                        case TIMER:
-                            if (timerCallback != null) {
-                                timerCallback.accept(message.getTimeRemaining());
-                            }
-                            break;
+                            case TIME_UP:
+                                if (timeUpCallback != null) {
+                                    timeUpCallback.run();
+                                }
+                                break;
 
-                        case TIME_UP:
-                            if (timeUpCallback != null) {
-                                timeUpCallback.run();
-                            }
-                            break;
+                            case RESULTS:
+                                if (resultsCallback != null) {
+                                    resultsCallback.accept(message.getPlayerResults());
+                                }
+                                break;
 
-                        case SCORE_UPDATE:
-                            if (scoreUpdateCallback != null) {
-                                scoreUpdateCallback.accept(message.getScore());
-                            }
-                            break;
+                            case DISCONNECT:
+                                handleDisconnect();
+                                break;
 
-                        case RESULTS:
-                            if (resultsCallback != null) {
-                                resultsCallback.accept(message.getPlayerResults());
-                            }
-                            break;
-
-                        case DISCONNECT:
+                            case KEEP_ALIVE:
+                                // Just update the last keep-alive timestamp
+                                lastKeepAliveReceived = System.currentTimeMillis();
+                                break;
+                        }
+                    } catch (IOException e) {
+                        if (System.currentTimeMillis() - lastKeepAliveReceived > KEEP_ALIVE_TIMEOUT) {
+                            System.out.println("Connection timeout - last keep-alive: " + 
+                                (System.currentTimeMillis() - lastKeepAliveReceived) + "ms ago");
                             handleDisconnect();
                             break;
-                    }
-
-                    // Check for keep-alive timeout
-                    if (System.currentTimeMillis() - lastKeepAliveReceived > KEEP_ALIVE_TIMEOUT) {
+                        }
+                    } catch (ClassNotFoundException e) {
+                        System.out.println("Error reading message: " + e.getMessage());
                         handleDisconnect();
                         break;
                     }
                 }
             } catch (Exception e) {
+                System.out.println("Client listener error: " + e.getMessage());
                 handleDisconnect();
             }
         }
@@ -168,6 +214,9 @@ public class GameClient {
         if (listener != null) {
             listener.stop();
         }
+        if (keepAliveSender != null) {
+            keepAliveSender.stop();
+        }
 
         try {
             if (socket != null && !socket.isClosed()) {
@@ -184,9 +233,12 @@ public class GameClient {
         try {
             Message message = new Message(MessageType.ANSWER);
             message.setAnswerIndex(answerIndex);
-            out.writeObject(message);
-            out.flush();
+            synchronized (out) {
+                out.writeObject(message);
+                out.flush();
+            }
         } catch (IOException e) {
+            System.out.println("Error sending answer: " + e.getMessage());
             handleDisconnect();
         }
     }
@@ -205,10 +257,6 @@ public class GameClient {
 
     public void setTimeUpCallback(Runnable callback) {
         this.timeUpCallback = callback;
-    }
-
-    public void setScoreUpdateCallback(Consumer<Integer> callback) {
-        this.scoreUpdateCallback = callback;
     }
 
     public void setResultsCallback(Consumer<List<Player>> callback) {

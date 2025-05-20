@@ -10,6 +10,7 @@ public enum MessageType {
     JOIN_FAILED,
     LEAVE,
     DISCONNECT,
+    KEEP_ALIVE,
     
     // Game flow messages
     QUESTION,

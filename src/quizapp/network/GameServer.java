@@ -22,7 +22,7 @@ public class GameServer {
 
     private static final int PORT = 8888;
     private static final long KEEP_ALIVE_INTERVAL = 3000; // 3 seconds
-    private static final long CLIENT_TIMEOUT = 10000; // 10 seconds
+    private static final long CLIENT_TIMEOUT = 15000; // 15 seconds
 
     private ServerSocket serverSocket;
     private final Quiz quiz;
@@ -57,21 +57,33 @@ public class GameServer {
         public void run() {
             try {
                 while (running && !socket.isClosed()) {
-                    Message message = (Message) in.readObject();
-                    lastKeepAliveResponse = System.currentTimeMillis();
+                    try {
+                        Message message = (Message) in.readObject();
+                        lastKeepAliveResponse = System.currentTimeMillis();
 
-                    switch (message.getType()) {
-                        case ANSWER:
-                            handleAnswer(player, message.getAnswerIndex());
-                            break;
+                        switch (message.getType()) {
+                            case ANSWER:
+                                handleAnswer(player, message.getAnswerIndex());
+                                break;
 
-                        case LEAVE:
-                            running = false;
-                            break;
+                            case LEAVE:
+                                running = false;
+                                break;
+
+                            case KEEP_ALIVE:
+                                // Send keep-alive response
+                                sendKeepAlive();
+                                break;
+                        }
+                    } catch (IOException e) {
+                        if (System.currentTimeMillis() - lastKeepAliveResponse > CLIENT_TIMEOUT) {
+                            throw new IOException("Client timeout - no response for " + 
+                                (System.currentTimeMillis() - lastKeepAliveResponse) + "ms");
+                        }
                     }
                 }
             } catch (Exception e) {
-                System.out.println("Client disconnected: " + player.getName());
+                System.out.println("Client disconnected: " + player.getName() + " - " + e.getMessage());
             } finally {
                 close();
                 server.removeClient(player.getName());
@@ -87,13 +99,8 @@ public class GameServer {
         }
 
         public void sendKeepAlive() throws IOException {
-            Message keepAlive = new Message(MessageType.TIMER);
-            keepAlive.setTimeRemaining(-1);
+            Message keepAlive = new Message(MessageType.KEEP_ALIVE);
             sendMessage(keepAlive);
-
-            if (System.currentTimeMillis() - lastKeepAliveResponse > CLIENT_TIMEOUT) {
-                throw new IOException("Client timeout");
-            }
         }
 
         public void close() {
@@ -153,6 +160,7 @@ public class GameServer {
                         try {
                             entry.getValue().sendKeepAlive();
                         } catch (IOException e) {
+                            System.out.println("Client " + entry.getKey() + " failed keep-alive check: " + e.getMessage());
                             disconnectedClients.add(entry.getKey());
                         }
                     }
@@ -166,6 +174,10 @@ public class GameServer {
 
     private void handleNewClient(Socket clientSocket) {
         try {
+            clientSocket.setKeepAlive(true);
+            clientSocket.setTcpNoDelay(true);
+            clientSocket.setSoTimeout(10000); // 10 second read timeout
+            
             ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
             ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
 
@@ -175,6 +187,18 @@ public class GameServer {
                     joinMessage.getRoomCode().equals(roomCode)) {
 
                 String playerName = joinMessage.getPlayerName();
+                
+                // Check if player with same name already exists
+                synchronized (clients) {
+                    if (clients.containsKey(playerName)) {
+                        Message response = new Message(MessageType.JOIN_FAILED, "Player name already taken");
+                        out.writeObject(response);
+                        out.flush();
+                        clientSocket.close();
+                        return;
+                    }
+                }
+
                 Player player = new Player(playerName);
 
                 ClientHandler handler = new ClientHandler(clientSocket, out, in, player, this);
@@ -206,7 +230,7 @@ public class GameServer {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("Error handling new client: " + e.getMessage());
             try {
                 clientSocket.close();
             } catch (IOException ex) {
@@ -230,6 +254,8 @@ public class GameServer {
         if (playerUpdateCallback != null) {
             playerUpdateCallback.accept(getConnectedPlayers());
         }
+        
+        System.out.println("Player " + playerName + " disconnected");
     }
 
     public void stop() {
@@ -304,17 +330,6 @@ public class GameServer {
         Question currentQuestion = quiz.getQuestionAt(currentQuestionIndex);
         if (currentQuestion != null && currentQuestion.isCorrectAnswer(answerIndex)) {
             player.incrementCorrectAnswers();
-
-            ClientHandler handler = clients.get(player.getName());
-            if (handler != null) {
-                Message scoreUpdate = new Message(MessageType.SCORE_UPDATE);
-                scoreUpdate.setScore(player.getCorrectAnswers());
-                try {
-                    handler.sendMessage(scoreUpdate);
-                } catch (IOException e) {
-                    // Client will be removed when its handler detects the error
-                }
-            }
         }
     }
 
