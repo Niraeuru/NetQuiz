@@ -245,6 +245,7 @@ public class PlayerGameScreen extends JFrame {
             answerButtons[i].setText("<html><div style='text-align: center;'>" + 
                                     (char)('A' + i) + "<br>" + options[i] + "</div></html>");
             answerButtons[i].setEnabled(true);
+            answerButtons[i].setBorder(null);
         }
         
         // Show question and answer panels
@@ -345,22 +346,10 @@ public class PlayerGameScreen extends JFrame {
     }
     
     private void updateScore(int score) {
-        scoreLabel.setText("Score: " + score);
+        scoreLabel.setText("Correct Answers: " + score);
     }
     
     private void showResults(List<Player> players) {
-        // Find current player
-        Player currentPlayer = null;
-        int playerRank = -1;
-        
-        for (int i = 0; i < players.size(); i++) {
-            if (players.get(i).getName().equals(client.getPlayerName())) {
-                currentPlayer = players.get(i);
-                playerRank = i + 1;
-                break;
-            }
-        }
-        
         // Create results panel
         JPanel resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
@@ -371,12 +360,23 @@ public class PlayerGameScreen extends JFrame {
         titleLabel.setFont(new Font("Arial", Font.BOLD, 24));
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         
-        JLabel playerResultLabel;
+        // Find current player and their rank
+        Player currentPlayer = null;
+        int playerRank = -1;
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getName().equals(client.getPlayerName())) {
+                currentPlayer = players.get(i);
+                playerRank = i + 1;
+                break;
+            }
+        }
+        
+        JLabel playerResultLabel = new JLabel();
         if (currentPlayer != null) {
-            playerResultLabel = new JLabel(String.format("You finished in position %d",
-                                                        playerRank));
+            playerResultLabel.setText(String.format("You finished in position %d with %d correct answers",
+                    playerRank, currentPlayer.getCorrectAnswers()));
         } else {
-            playerResultLabel = new JLabel("You did not finish the quiz");
+            playerResultLabel.setText("You did not finish the quiz");
         }
         playerResultLabel.setFont(new Font("Arial", Font.BOLD, 18));
         playerResultLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -387,44 +387,60 @@ public class PlayerGameScreen extends JFrame {
         resultsPanel.add(Box.createRigidArea(new Dimension(0, 30)));
         
         // Show top players
-        JLabel topPlayersLabel = new JLabel("Top Players:");
+        JLabel topPlayersLabel = new JLabel("Leaderboard:");
         topPlayersLabel.setFont(new Font("Arial", Font.BOLD, 18));
         topPlayersLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         resultsPanel.add(topPlayersLabel);
         resultsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         
-        int displayCount = Math.min(players.size(), 5);
+        // Create table header
+        JPanel headerPanel = new JPanel(new GridLayout(1, 3));
+        headerPanel.setBackground(ColorScheme.CARD_BACKGROUND);
+        headerPanel.setMaximumSize(new Dimension(400, 30));
+        
+        JLabel rankHeader = new JLabel("Rank", SwingConstants.CENTER);
+        JLabel nameHeader = new JLabel("Player", SwingConstants.CENTER);
+        JLabel scoreHeader = new JLabel("Correct Answers", SwingConstants.CENTER);
+        
+        headerPanel.add(rankHeader);
+        headerPanel.add(nameHeader);
+        headerPanel.add(scoreHeader);
+        resultsPanel.add(headerPanel);
+        
+        // Add player rows
+        int displayCount = Math.min(players.size(), 10);
         for (int i = 0; i < displayCount; i++) {
             Player p = players.get(i);
             
-            JPanel playerPanel = new JPanel();
-            playerPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+            JPanel playerPanel = new JPanel(new GridLayout(1, 3));
             playerPanel.setBackground(ColorScheme.CARD_BACKGROUND);
             playerPanel.setMaximumSize(new Dimension(400, 30));
             
             // Add medal icon for top 3
             String rankText = (i == 0) ? "🥇" : (i == 1) ? "🥈" : (i == 2) ? "🥉" : String.valueOf(i + 1);
             
-            JLabel rankLabel = new JLabel(rankText);
-            rankLabel.setFont(new Font("Arial", Font.BOLD, 18));
+            JLabel rankLabel = new JLabel(rankText, SwingConstants.CENTER);
+            JLabel nameLabel = new JLabel(p.getName(), SwingConstants.CENTER);
+            JLabel scoreLabel = new JLabel(String.valueOf(p.getCorrectAnswers()), SwingConstants.CENTER);
             
-            JLabel nameLabel = new JLabel(p.getName());
-            nameLabel.setFont(new Font("Arial", Font.BOLD, 16));
-            
-            //JLabel scoreLabel = new JLabel(String.valueOf(p.getScore()) + " pts");
-            scoreLabel.setFont(new Font("Arial", Font.PLAIN, 16));
+            // Highlight current player
+            if (p.getName().equals(client.getPlayerName())) {
+                rankLabel.setForeground(ColorScheme.PRIMARY);
+                nameLabel.setForeground(ColorScheme.PRIMARY);
+                scoreLabel.setForeground(ColorScheme.PRIMARY);
+                rankLabel.setFont(rankLabel.getFont().deriveFont(Font.BOLD));
+                nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+                scoreLabel.setFont(scoreLabel.getFont().deriveFont(Font.BOLD));
+            }
             
             playerPanel.add(rankLabel);
-            playerPanel.add(Box.createRigidArea(new Dimension(10, 0)));
             playerPanel.add(nameLabel);
-            playerPanel.add(Box.createRigidArea(new Dimension(20, 0)));
             playerPanel.add(scoreLabel);
             
             resultsPanel.add(playerPanel);
-            resultsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         }
         
-        // Add a "Play Again" button
+        // Add a "Return to Main Menu" button
         JButton playAgainButton = new JButton("Return to Main Menu");
         playAgainButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         playAgainButton.setBackground(ColorScheme.PRIMARY);
