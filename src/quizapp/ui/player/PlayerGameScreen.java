@@ -12,9 +12,6 @@ import quizapp.network.GameClient;
 import quizapp.ui.WelcomeScreen;
 import quizapp.util.ColorScheme;
 
-/**
- * Screen for players to participate in the quiz game.
- */
 public class PlayerGameScreen extends JFrame {
     
     private JPanel mainPanel;
@@ -128,7 +125,7 @@ public class PlayerGameScreen extends JFrame {
         statusLabel.setForeground(ColorScheme.SECONDARY_TEXT);
         statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         
-        scoreLabel = new JLabel("Score: 0");
+        scoreLabel = new JLabel("Correct Answers: 0");
         scoreLabel.setFont(new Font("Arial", Font.BOLD, 18));
         scoreLabel.setForeground(ColorScheme.PRIMARY);
         scoreLabel.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -208,12 +205,6 @@ public class PlayerGameScreen extends JFrame {
         client.setTimeUpCallback(() -> {
             SwingUtilities.invokeLater(() -> {
                 timeUp();
-            });
-        });
-        
-        client.setScoreUpdateCallback((score) -> {
-            SwingUtilities.invokeLater(() -> {
-                updateScore(score);
             });
         });
         
@@ -343,10 +334,6 @@ public class PlayerGameScreen extends JFrame {
         }
         
         showWaitingScreen("Waiting for next question...");
-    }
-    
-    private void updateScore(int score) {
-        scoreLabel.setText("Correct Answers: " + score);
     }
     
     private void showResults(List<Player> players) {

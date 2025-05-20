@@ -33,7 +33,6 @@ public class GameClient {
     private QuestionCallback questionCallback;
     private Consumer<Integer> timerCallback;
     private Runnable timeUpCallback;
-    private Consumer<Integer> scoreUpdateCallback;
     private Consumer<List<Player>> resultsCallback;
     private Runnable disconnectCallback;
 
@@ -120,12 +119,6 @@ public class GameClient {
                             }
                             break;
 
-                        case SCORE_UPDATE:
-                            if (scoreUpdateCallback != null) {
-                                scoreUpdateCallback.accept(message.getScore());
-                            }
-                            break;
-
                         case RESULTS:
                             if (resultsCallback != null) {
                                 resultsCallback.accept(message.getPlayerResults());
@@ -205,10 +198,6 @@ public class GameClient {
 
     public void setTimeUpCallback(Runnable callback) {
         this.timeUpCallback = callback;
-    }
-
-    public void setScoreUpdateCallback(Consumer<Integer> callback) {
-        this.scoreUpdateCallback = callback;
     }
 
     public void setResultsCallback(Consumer<List<Player>> callback) {
