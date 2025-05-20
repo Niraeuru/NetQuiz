@@ -164,6 +164,7 @@ public class PlayerGameScreen extends JFrame {
         client.setQuestionCallback((question, questionNumber, totalQuestions) -> {
             SwingUtilities.invokeLater(() -> {
                 currentQuestion = question;
+                selectedAnswer = -1;  // Reset selected answer for new question
                 showQuestion(question, questionNumber, totalQuestions);
             });
         });
@@ -205,6 +206,7 @@ public class PlayerGameScreen extends JFrame {
             answerButtons[i].setText("<html><div style='text-align: center;'>" +
                     (char)('A' + i) + "<br>" + options[i] + "</div></html>");
             answerButtons[i].setEnabled(true);
+            answerButtons[i].setBorder(null);  // Reset any previous borders
         }
 
         Container contentPane = mainPanel.getParent();
@@ -262,6 +264,8 @@ public class PlayerGameScreen extends JFrame {
     }
 
     private void updateTimer(int seconds) {
+        if (seconds < 0) return;  // Prevent negative timer values
+        
         timerLabel.setText(String.format("%02d:%02d", seconds / 60, seconds % 60));
 
         if (seconds <= 5) {
@@ -278,17 +282,12 @@ public class PlayerGameScreen extends JFrame {
             button.setEnabled(false);
         }
 
-        int correctIndex = currentQuestion.getCorrectAnswerIndex();
-        answerButtons[correctIndex].setBorder(BorderFactory.createLineBorder(ColorScheme.SUCCESS, 4));
-
         if (selectedAnswer == -1) {
-            statusLabel.setText("Time's up! You didn't answer. The correct answer was " + (char)('A' + correctIndex));
-        } else if (selectedAnswer == correctIndex) {
+            statusLabel.setText("Time's up! You didn't answer.");
+        } else if (selectedAnswer == currentQuestion.getCorrectAnswerIndex()) {
             statusLabel.setText("Correct! Well done!");
-            correctAnswers++;
-            correctAnswersLabel.setText("Correct Answers: " + correctAnswers);
         } else {
-            statusLabel.setText("Incorrect. The correct answer was " + (char)('A' + correctIndex));
+            statusLabel.setText("Incorrect.");
         }
 
         showWaitingScreen("Waiting for next question...");
@@ -305,20 +304,17 @@ public class PlayerGameScreen extends JFrame {
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         Player currentPlayer = null;
-        int playerRank = -1;
-
-        for (int i = 0; i < players.size(); i++) {
-            if (players.get(i).getName().equals(client.getPlayerName())) {
-                currentPlayer = players.get(i);
-                playerRank = i + 1;
+        for (Player p : players) {
+            if (p.getName().equals(client.getPlayerName())) {
+                currentPlayer = p;
                 break;
             }
         }
 
         JLabel playerResultLabel;
         if (currentPlayer != null) {
-            playerResultLabel = new JLabel(String.format("You finished in position %d with %d correct answers",
-                    playerRank, currentPlayer.getCorrectAnswers()));
+            playerResultLabel = new JLabel(String.format("You got %d correct answers",
+                    currentPlayer.getCorrectAnswers()));
         } else {
             playerResultLabel = new JLabel("You did not finish the quiz");
         }
@@ -330,37 +326,52 @@ public class PlayerGameScreen extends JFrame {
         resultsPanel.add(playerResultLabel);
         resultsPanel.add(Box.createRigidArea(new Dimension(0, 30)));
 
-        JLabel topPlayersLabel = new JLabel("Top Players:");
+        JLabel topPlayersLabel = new JLabel("Leaderboard");
         topPlayersLabel.setFont(new Font("Arial", Font.BOLD, 18));
         topPlayersLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         resultsPanel.add(topPlayersLabel);
         resultsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
-        int displayCount = Math.min(players.size(), 5);
+        // Create a table-like panel for the leaderboard
+        JPanel leaderboardPanel = new JPanel();
+        leaderboardPanel.setLayout(new BoxLayout(leaderboardPanel, BoxLayout.Y_AXIS));
+        leaderboardPanel.setBackground(ColorScheme.CARD_BACKGROUND);
+        leaderboardPanel.setMaximumSize(new Dimension(400, 300));
+
+        // Add header
+        JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
+        headerPanel.setBackground(ColorScheme.CARD_BACKGROUND);
+        headerPanel.add(new JLabel("Rank"));
+        headerPanel.add(new JLabel("Player"));
+        headerPanel.add(new JLabel("Correct Answers"));
+        resultsPanel.add(headerPanel);
+        resultsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+
+        int displayCount = Math.min(players.size(), 10);
         for (int i = 0; i < displayCount; i++) {
             Player p = players.get(i);
+            boolean isCurrentPlayer = p.getName().equals(client.getPlayerName());
 
-            JPanel playerPanel = new JPanel();
-            playerPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
-            playerPanel.setBackground(ColorScheme.CARD_BACKGROUND);
+            JPanel playerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
+            playerPanel.setBackground(isCurrentPlayer ? ColorScheme.PRIMARY : ColorScheme.CARD_BACKGROUND);
             playerPanel.setMaximumSize(new Dimension(400, 30));
 
             String rankText = (i == 0) ? "🥇" : (i == 1) ? "🥈" : (i == 2) ? "🥉" : String.valueOf(i + 1);
-
             JLabel rankLabel = new JLabel(rankText);
-            rankLabel.setFont(new Font("Arial", Font.BOLD, 18));
+            rankLabel.setFont(new Font("Arial", Font.BOLD, 16));
+            rankLabel.setForeground(isCurrentPlayer ? Color.WHITE : ColorScheme.PRIMARY_TEXT);
 
             JLabel nameLabel = new JLabel(p.getName());
             nameLabel.setFont(new Font("Arial", Font.BOLD, 16));
+            nameLabel.setForeground(isCurrentPlayer ? Color.WHITE : ColorScheme.PRIMARY_TEXT);
 
-            JLabel answersLabel = new JLabel(p.getCorrectAnswers() + " correct");
-            answersLabel.setFont(new Font("Arial", Font.PLAIN, 16));
+            JLabel scoreLabel = new JLabel(p.getCorrectAnswers() + " correct");
+            scoreLabel.setFont(new Font("Arial", Font.BOLD, 16));
+            scoreLabel.setForeground(isCurrentPlayer ? Color.WHITE : ColorScheme.PRIMARY_TEXT);
 
             playerPanel.add(rankLabel);
-            playerPanel.add(Box.createRigidArea(new Dimension(10, 0)));
             playerPanel.add(nameLabel);
-            playerPanel.add(Box.createRigidArea(new Dimension(20, 0)));
-            playerPanel.add(answersLabel);
+            playerPanel.add(scoreLabel);
 
             resultsPanel.add(playerPanel);
             resultsPanel.add(Box.createRigidArea(new Dimension(0, 5)));

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.function.Consumer;
+import javax.swing.SwingUtilities;
 import quizapp.model.Player;
 import quizapp.model.Question;
 import quizapp.model.Quiz;
@@ -33,6 +34,8 @@ public class GameServer {
     private Consumer<List<Player>> playerUpdateCallback;
     private Timer keepAliveTimer;
     private int currentQuestionIndex = -1;
+    private Timer questionTimer;
+    private int timeRemaining;
 
     public class ClientHandler implements Runnable {
         private final Socket socket;
@@ -313,7 +316,7 @@ public class GameServer {
 
     public void broadcastResults(List<Player> results) {
         Message message = new Message(MessageType.RESULTS);
-        message.setPlayerResults(results);
+        message.setPlayerResults(getConnectedPlayers());
 
         synchronized (clients) {
             for (ClientHandler handler : clients.values()) {
@@ -327,15 +330,27 @@ public class GameServer {
     }
 
     public void handleAnswer(Player player, int answerIndex) {
-        Question currentQuestion = quiz.getQuestionAt(currentQuestionIndex);
-        if (currentQuestion != null && currentQuestion.isCorrectAnswer(answerIndex)) {
-            player.incrementCorrectAnswers();
+        synchronized (players) {
+            Question currentQuestion = quiz.getQuestionAt(currentQuestionIndex);
+            if (currentQuestion != null && currentQuestion.isCorrectAnswer(answerIndex)) {
+                player.incrementCorrectAnswers();
+                // Update all clients with the new scores immediately
+                broadcastResults(getConnectedPlayers());
+            }
         }
     }
 
     public List<Player> getConnectedPlayers() {
         synchronized (players) {
-            return new ArrayList<>(players);
+            List<Player> sortedPlayers = new ArrayList<>(players);
+            Collections.sort(sortedPlayers, (p1, p2) -> {
+                int scoreCompare = Integer.compare(p2.getCorrectAnswers(), p1.getCorrectAnswers());
+                if (scoreCompare != 0) {
+                    return scoreCompare;
+                }
+                return p1.getName().compareTo(p2.getName());
+            });
+            return sortedPlayers;
         }
     }
 
@@ -345,5 +360,57 @@ public class GameServer {
 
     public String getRoomCode() {
         return roomCode;
+    }
+
+    private void startQuestionTimer(int seconds) {
+        if (questionTimer != null) {
+            questionTimer.cancel();
+        }
+
+        questionTimer = new Timer();
+        timeRemaining = seconds;
+
+        updateTimerDisplay();
+        broadcastTimer(timeRemaining);
+
+        questionTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                timeRemaining--;
+
+                SwingUtilities.invokeLater(() -> {
+                    updateTimerDisplay();
+                    broadcastTimer(timeRemaining);
+
+                    if (timeRemaining <= 0) {
+                        questionTimer.cancel();
+                        questionTimeUp();
+                    }
+                });
+            }
+        }, 1000, 1000);
+    }
+
+    private void broadcastTimer(int seconds) {
+        Message message = new Message(MessageType.TIMER);
+        message.setTimeRemaining(seconds);
+
+        synchronized (clients) {
+            for (ClientHandler handler : clients.values()) {
+                try {
+                    handler.sendMessage(message);
+                } catch (IOException e) {
+                    // Client will be removed when its handler detects the error
+                }
+            }
+        }
+    }
+
+    private void updateTimerDisplay() {
+        // Implementation of updateTimerDisplay method
+    }
+
+    private void questionTimeUp() {
+        // Implementation of questionTimeUp method
     }
 }

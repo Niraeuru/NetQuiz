@@ -13,9 +13,9 @@ public class GameClient {
 
     private static final int PORT = 8888;
     private static final int RECONNECT_ATTEMPTS = 3;
-    private static final int RECONNECT_DELAY = 2000; // 2 seconds
-    private static final long KEEP_ALIVE_TIMEOUT = 15000; // 15 seconds
-    private static final long KEEP_ALIVE_INTERVAL = 3000; // 3 seconds
+    private static final int RECONNECT_DELAY = 2000;
+    private static final long KEEP_ALIVE_TIMEOUT = 15000;
+    private static final long KEEP_ALIVE_INTERVAL = 3000;
 
     private Socket socket;
     private ObjectOutputStream out;
