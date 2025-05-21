@@ -9,7 +9,7 @@ import java.util.function.Consumer;
 import quizapp.model.Player;
 import quizapp.model.Question;
 
-public class GameClient {
+public class    GameClient {
 
     private static final int PORT = 8888;
     private static final int RECONNECT_ATTEMPTS = 3;

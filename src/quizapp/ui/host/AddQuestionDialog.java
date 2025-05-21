@@ -46,7 +46,7 @@ public class AddQuestionDialog extends JDialog {
         // Buttons
         saveButton = new JButton("Save Question");
         saveButton.setBackground(ColorScheme.PRIMARY);
-        saveButton.setForeground(Color.WHITE);
+        saveButton.setForeground(Color.black);
 
         cancelButton = new JButton("Cancel");
         cancelButton.setBackground(Color.LIGHT_GRAY);

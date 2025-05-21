@@ -187,6 +187,7 @@ public class HostGameScreen extends JFrame {
         questionLabel.setText("Waiting for players to join...");
         statusLabel.setText("Lobby - Waiting for players");
         startButton.setText("Start Quiz");
+        startButton.setForeground(Color.BLACK);
         timerLabel.setText("");
         updatePlayerList(server.getConnectedPlayers());
     }
@@ -294,7 +295,6 @@ public class HostGameScreen extends JFrame {
         endQuizButton.setEnabled(false);
 
         List<Player> players = new ArrayList<>(server.getConnectedPlayers());
-        Collections.sort(players, (p1, p2) -> p2.getCorrectAnswers() - p1.getCorrectAnswers());
 
         if (players.isEmpty()) {
             questionLabel.setText("<html><div style='text-align: center;'>" +
@@ -306,14 +306,8 @@ public class HostGameScreen extends JFrame {
             resultsHtml.append("<html><div style='text-align: center;'>");
             resultsHtml.append("<h1>Quiz Results</h1>");
 
-            if (!players.isEmpty()) {
-                Player winner = players.get(0);
-                resultsHtml.append("<h2>Winner: ").append(winner.getName())
-                        .append(" (").append(winner.getCorrectAnswers()).append(" correct answers)</h2>");
-            }
-
             resultsHtml.append("<table align='center' style='margin-top: 20px;'>");
-            resultsHtml.append("<tr><th>Rank</th><th>Player</th><th>Correct Answers</th></tr>");
+            resultsHtml.append("<tr><th></th><th>Player</th></tr>");
 
             int displayCount = Math.min(players.size(), 10);
             for (int i = 0; i < displayCount; i++) {
@@ -325,7 +319,6 @@ public class HostGameScreen extends JFrame {
                 resultsHtml.append("<tr ").append(style).append(">");
                 resultsHtml.append("<td>").append(i + 1).append("</td>");
                 resultsHtml.append("<td>").append(p.getName()).append("</td>");
-                resultsHtml.append("<td>").append(p.getCorrectAnswers()).append("</td>");
                 resultsHtml.append("</tr>");
             }
 
@@ -345,10 +338,7 @@ public class HostGameScreen extends JFrame {
                 noPlayersLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
                 playerListPanel.add(noPlayersLabel);
             } else {
-                List<Player> sortedPlayers = new ArrayList<>(players);
-                Collections.sort(sortedPlayers, (p1, p2) -> p2.getCorrectAnswers() - p1.getCorrectAnswers());
-
-                for (Player player : sortedPlayers) {
+                for (Player player : players) {
                     JPanel playerPanel = createPlayerPanel(player);
                     playerListPanel.add(playerPanel);
                     playerListPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -372,13 +362,7 @@ public class HostGameScreen extends JFrame {
         nameLabel.setFont(new Font("Arial", Font.BOLD, 14));
         nameLabel.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0));
 
-        JLabel correctAnswersLabel = new JLabel(String.valueOf(player.getCorrectAnswers()));
-        correctAnswersLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        correctAnswersLabel.setHorizontalAlignment(SwingConstants.RIGHT);
-        correctAnswersLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10));
-
-        panel.add(nameLabel, BorderLayout.WEST);
-        panel.add(correctAnswersLabel, BorderLayout.EAST);
+        panel.add(nameLabel, BorderLayout.CENTER);
 
         return panel;
     }

@@ -64,7 +64,7 @@ public class PlayerJoinScreen extends JFrame {
 
         joinButton = new JButton("Join Quiz");
         joinButton.setBackground(ColorScheme.PRIMARY);
-        joinButton.setForeground(Color.WHITE);
+        joinButton.setForeground(Color.black);
         joinButton.setFont(new Font("Arial", Font.BOLD, 16));
         joinButton.setFocusPainted(false);
         joinButton.setPreferredSize(new Dimension(150, 40));
