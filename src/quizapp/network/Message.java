@@ -10,6 +10,8 @@ import quizapp.model.Question;
  */
 public class Message implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
     private MessageType type;
     private String playerName;
     private String roomCode;

@@ -7,6 +7,8 @@ import java.io.Serializable;
  */
 public class Question implements Serializable {
     
+    private static final long serialVersionUID = 1L;
+    
     private String text;
     private String[] options;
     private int correctAnswerIndex;
