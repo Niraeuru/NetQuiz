@@ -137,6 +137,7 @@ public class    GameClient {
                         Message message = (Message) in.readObject();
                         lastKeepAliveReceived = System.currentTimeMillis();
 
+                        System.out.println(message.getType());
                         switch (message.getType()) {
                             case QUESTION:
                                 if (questionCallback != null) {

@@ -13,9 +13,12 @@ public class AddQuestionDialog extends JDialog {
     private JButton saveButton;
     private JButton cancelButton;
     private Question result;
+    private JSpinner timerSpinner;
+    private int time = 10;
 
-    public AddQuestionDialog(JFrame parent) {
+    public AddQuestionDialog(JFrame parent,int globalTime) {
         super(parent, "Add Question", true);
+        time = globalTime;
         initComponents();
         setupLayout();
         addListeners();
@@ -33,6 +36,11 @@ public class AddQuestionDialog extends JDialog {
         optionFields = new JTextField[4];
         correctAnswerRadios = new JRadioButton[4];
         ButtonGroup radioGroup = new ButtonGroup();
+
+        //Timer Field
+        System.out.println(time);
+        timerSpinner = new JSpinner(new SpinnerNumberModel( time, 5, 60, 5));
+        timerSpinner.setPreferredSize(new Dimension(60, 25));
 
         for (int i = 0; i < 4; i++) {
             optionFields[i] = new JTextField(25);
@@ -93,6 +101,9 @@ public class AddQuestionDialog extends JDialog {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
         buttonPanel.add(saveButton);
         buttonPanel.add(cancelButton);
+        buttonPanel.add(new JLabel("Timer:"));
+        System.out.println(time);
+        buttonPanel.add(timerSpinner);
 
         add(mainPanel, BorderLayout.CENTER);
         add(buttonPanel, BorderLayout.SOUTH);
@@ -145,7 +156,7 @@ public class AddQuestionDialog extends JDialog {
         }
 
         // Get timer value from HostSetupScreen
-        result = new Question(questionText, options, correctAnswerIndex, 10);
+        result = new Question(questionText, options, correctAnswerIndex, (Integer) timerSpinner.getValue());
     }
 
     public Question showDialog() {

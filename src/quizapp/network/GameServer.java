@@ -18,6 +18,7 @@ import javax.swing.SwingUtilities;
 import quizapp.model.Player;
 import quizapp.model.Question;
 import quizapp.model.Quiz;
+import  quizapp.util.Logger;
 
 public class GameServer {
 
@@ -27,13 +28,13 @@ public class GameServer {
 
     private ServerSocket serverSocket;
     private final Quiz quiz;
+    public Logger logger;
     private final String roomCode;
     private final Map<String, ClientHandler> clients;
     private final List<Player> players;
     private boolean isRunning;
     private Consumer<List<Player>> playerUpdateCallback;
     private Timer keepAliveTimer;
-    private int currentQuestionIndex = -1;
     private Timer questionTimer;
     private int timeRemaining;
 
@@ -133,6 +134,7 @@ public class GameServer {
         String hostAddress = InetAddress.getLocalHost().getHostAddress();
         System.out.println("Game server started on IP: " + hostAddress);
         System.out.println("Room code: " + roomCode);
+        logger = new Logger(quiz.roomCode);
 
         startKeepAliveTimer();
 
@@ -317,6 +319,7 @@ public class GameServer {
     public void broadcastResults(List<Player> results) {
         Message message = new Message(MessageType.RESULTS);
         message.setPlayerResults(getConnectedPlayers());
+        logger.close();
 
         synchronized (clients) {
             for (ClientHandler handler : clients.values()) {
@@ -331,7 +334,8 @@ public class GameServer {
 
     public void handleAnswer(Player player, int answerIndex) {
         synchronized (players) {
-            Question currentQuestion = quiz.getQuestionAt(currentQuestionIndex);
+            Question currentQuestion = quiz.getQuestionAt(quiz.currentQuestionIndex);
+            logger.logAnswer(player.getName(),quiz.currentQuestionIndex, String.valueOf(answerIndex),String.valueOf(currentQuestion.getCorrectAnswerIndex()),0);
             if (currentQuestion != null && currentQuestion.isCorrectAnswer(answerIndex)) {
                 player.incrementCorrectAnswers();
                 // Update all clients with the new scores immediately
@@ -391,7 +395,7 @@ public class GameServer {
         }, 1000, 1000);
     }
 
-    private void broadcastTimer(int seconds) {
+    public void broadcastTimer(int seconds) {
         Message message = new Message(MessageType.TIMER);
         message.setTimeRemaining(seconds);
 

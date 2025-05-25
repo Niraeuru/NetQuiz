@@ -10,7 +10,6 @@ import quizapp.model.Question;
 import quizapp.model.Quiz;
 import quizapp.network.GameServer;
 import quizapp.util.ColorScheme;
-import quizapp.util.RoomCodeGenerator;
 
 public class HostSetupScreen extends JFrame {
 
@@ -52,7 +51,7 @@ public class HostSetupScreen extends JFrame {
         headerPanel.setBackground(ColorScheme.PRIMARY);
         headerPanel.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
 
-        roomCodeLabel = new JLabel("Room Code: " + RoomCodeGenerator.generateRoomCode());
+        roomCodeLabel = new JLabel("Room Code: " + quiz.roomCode);
         roomCodeLabel.setFont(new Font("Arial", Font.BOLD, 18));
         roomCodeLabel.setForeground(Color.WHITE);
 
@@ -153,8 +152,9 @@ public class HostSetupScreen extends JFrame {
     }
 
     private void showAddQuestionDialog() {
-        AddQuestionDialog dialog = new AddQuestionDialog(this);
+        AddQuestionDialog dialog = new AddQuestionDialog(this,(Integer) timerSpinner.getValue());
         Question question = dialog.showDialog();
+
 
         if (question != null) {
             questions.add(question);
@@ -179,11 +179,11 @@ public class HostSetupScreen extends JFrame {
         }
 
         quiz.setQuestions(questions);
-        String roomCode = roomCodeLabel.getText().split(": ")[1];
 
         try {
-            gameServer = new GameServer(quiz, roomCode);
+            gameServer = new GameServer(quiz, quiz.roomCode);
             gameServer.start();
+
 
             HostGameScreen gameScreen = new HostGameScreen(quiz, gameServer);
             gameScreen.setVisible(true);

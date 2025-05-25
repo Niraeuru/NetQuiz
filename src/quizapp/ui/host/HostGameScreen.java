@@ -32,7 +32,6 @@ public class HostGameScreen extends JFrame {
 
     private Quiz quiz;
     private GameServer server;
-    private int currentQuestionIndex = -1;
     private Question currentQuestion;
     private Timer questionTimer;
     private int timeRemaining;
@@ -81,7 +80,7 @@ public class HostGameScreen extends JFrame {
                 ColorScheme.SECONDARY
         ));
 
-        roomCodeLabel = new JLabel("Room Code: " + server.getRoomCode());
+        roomCodeLabel = new JLabel("Room Code: " + quiz.roomCode);
         roomCodeLabel.setFont(new Font("Arial", Font.BOLD, 24));
         roomCodeLabel.setForeground(ColorScheme.PRIMARY);
 
@@ -125,7 +124,7 @@ public class HostGameScreen extends JFrame {
         headerPanel.setBackground(ColorScheme.PRIMARY);
         headerPanel.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
 
-        JLabel titleLabel = new JLabel("Quiz Host - " + quiz.getName());
+        JLabel titleLabel = new JLabel("Quiz Host - " + quiz.roomCode);
         titleLabel.setFont(new Font("Arial", Font.BOLD, 22));
         titleLabel.setForeground(Color.WHITE);
 
@@ -200,18 +199,18 @@ public class HostGameScreen extends JFrame {
     }
 
     private void nextQuestion() {
-        currentQuestionIndex++;
+        quiz.currentQuestionIndex++;
 
-        if (currentQuestionIndex < quiz.getQuestions().size()) {
-            currentQuestion = quiz.getQuestions().get(currentQuestionIndex);
+        if (quiz.currentQuestionIndex < quiz.getQuestions().size()) {
+            currentQuestion = quiz.getQuestions().get(quiz.currentQuestionIndex);
 
             questionLabel.setText("<html><div style='text-align: center;'>" +
-                    "Question " + (currentQuestionIndex + 1) + "/" + quiz.getQuestions().size() +
+                    "Question " + (quiz.currentQuestionIndex + 1) + "/" + quiz.getQuestions().size() +
                     "<br><br>" + currentQuestion.getText() + "</div></html>");
 
             statusLabel.setText("Question in progress...");
             startQuestionTimer(currentQuestion.getTimeLimit());
-            server.broadcastQuestion(currentQuestion, currentQuestionIndex);
+            server.broadcastQuestion(currentQuestion, quiz.currentQuestionIndex);
         } else {
             showResults();
         }
@@ -246,7 +245,7 @@ public class HostGameScreen extends JFrame {
 
     private void updateTimerDisplay() {
         timerLabel.setText(String.format("%02d:%02d", timeRemaining / 60, timeRemaining % 60));
-
+        server.broadcastTimer(timeRemaining);
         if (timeRemaining <= 5) {
             timerLabel.setForeground(ColorScheme.ERROR);
         } else if (timeRemaining <= 10) {
@@ -274,7 +273,7 @@ public class HostGameScreen extends JFrame {
             @Override
             public void run() {
                 SwingUtilities.invokeLater(() -> {
-                    if (currentQuestionIndex < quiz.getQuestions().size() - 1) {
+                    if (quiz.currentQuestionIndex < quiz.getQuestions().size() - 1) {
                         nextQuestion();
                     } else {
                         showResults();
@@ -318,7 +317,7 @@ public class HostGameScreen extends JFrame {
 
                 resultsHtml.append("<tr ").append(style).append(">");
                 resultsHtml.append("<td>").append(i + 1).append("</td>");
-                resultsHtml.append("<td>").append(p.getName()).append("</td>");
+                resultsHtml.append("<td>").append(p.getName()).append(" scored ").append(p.getCorrectAnswers()).append("</td>");
                 resultsHtml.append("</tr>");
             }
 
